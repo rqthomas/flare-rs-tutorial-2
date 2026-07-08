@@ -14,7 +14,10 @@
 # get scripts needed to run this code
 source("R/install.R")
 source("01LakeInfo.R")
-walk(list.files(file.path(here::here(), "R"), full.names = TRUE), source)
+# only source .R files -- R/ also contains get_met.py (called as a subprocess,
+# not sourced) plus its __pycache__/ build directory, neither of which R's
+# source() can parse
+walk(list.files(file.path(here::here(), "R"), pattern = "\\.R$", full.names = TRUE), source)
 
 ################################################################################
 # 1. Download remote sensing data
@@ -36,8 +39,8 @@ ggplot() +
 # get values
 thermal_vals <- get_vals(points, thermaldata)
 output <- clean_data(thermal_vals)
-# save out targets
-# create directory for targets file
+#write_csv(output, '/Users/mollystroud/Desktop/fcre-targets-rs.csv')
+# create directory for targets file & save
 dir.create(paste0('./targets/', site, '/'), recursive = T)
 write_csv(output, paste0('targets/', site, '/', site, '-targets-rs.csv'))
 
@@ -60,10 +63,25 @@ write_csv(targets, paste0('targets/', site, '/', site, '-targets-rs.csv'))
 # Warning: this may take a while depending on length of your date range
 # Warning: Python must be installed to run this 
 ################################################################################
-# download stage 2 
-get_stage_2(start_date, end_date, site, bbox)
-# download stage 3
-get_stage_3(start_date, site, bbox)
+# stage 2: calls R/get_met.py directly (one forecast cycle per day in range)
+# see R/get_met.R for the Python environment setup helpers (.run_get_met_py)
+.run_get_met_py(c(
+  "stage2",
+  "--site", site,
+  "--bbox", bbox[["left"]], bbox[["bottom"]], bbox[["right"]], bbox[["top"]],
+  "--start-date", as.character(as.Date(start_date)),
+  "--end-date", as.character(as.Date(end_date))
+))
+message("Stage 2 data downloaded!")
+
+# stage 3: calls R/get_met.py directly (6-day forecast window from start_date)
+.run_get_met_py(c(
+  "stage3",
+  "--site", site,
+  "--bbox", bbox[["left"]], bbox[["bottom"]], bbox[["right"]], bbox[["top"]],
+  "--start-date", as.character(as.Date(start_date))
+))
+message("Stage 3 data downloaded!")
 
 
 ################################################################################
