@@ -1,0 +1,287 @@
+################################################################################
+# Download meteorological forecast data from dynamical.org and format it for
+# FLARE. This is a pure-Python port of the original get_met.R (which relied on
+# reticulate to drive Python from R). Doing the xarray/zarr/pandas work in
+# native Python avoids reticulate/virtualenv version mismatches between
+# machines -- this script is called as a subprocess from R (see R/get_met.R).
+#
+# https://dynamical.org/catalog/noaa-gefs-forecast-35-day/
+################################################################################
+import argparse
+import os
+
+import certifi
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+# variables of interest in the dynamical.org GEFS zarr store
+VARS = [
+    "temperature_2m",
+    "relative_humidity_2m",
+    "pressure_surface",
+    "wind_u_10m",
+    "wind_v_10m",
+    "downward_long_wave_radiation_flux_surface",
+    "downward_short_wave_radiation_flux_surface",
+    "precipitation_surface",
+]
+
+# rename GEFS variable names to the names FLARE expects
+VAR_RENAME = {
+    "temperature_2m": "air_temperature",
+    "relative_humidity_2m": "relative_humidity",
+    "pressure_surface": "air_pressure",
+    "wind_u_10m": "eastward_wind",
+    "wind_v_10m": "northward_wind",
+    "downward_long_wave_radiation_flux_surface": "surface_downwelling_longwave_flux_in_air",
+    "downward_short_wave_radiation_flux_surface": "surface_downwelling_shortwave_flux_in_air",
+    "precipitation_surface": "precipitation_flux",
+}
+
+STATE_VARS = [
+    "air_pressure",
+    "relative_humidity",
+    "air_temperature",
+    "eastward_wind",
+    "northward_wind",
+]
+
+FLUX_VARS = [
+    "precipitation_flux",
+    "surface_downwelling_longwave_flux_in_air",
+    "surface_downwelling_shortwave_flux_in_air",
+]
+
+FINAL_COLS = ["site_id", "family", "parameter", "datetime", "variable", "prediction"]
+
+
+################################################################################
+# solar geometry helpers (ported from R/to_hourly.R)
+################################################################################
+def equation_of_time(doy):
+    f = np.pi / 180 * (279.5 + 0.9856 * doy)
+    et = (
+        -104.7 * np.sin(f)
+        + 596.2 * np.sin(2 * f)
+        + 4.3 * np.sin(4 * f)
+        - 429.3 * np.cos(f)
+        - 2 * np.cos(2 * f)
+        + 19.3 * np.cos(3 * f)
+    ) / 3600
+    return et
+
+
+def cos_solar_zenith_angle(doy, lat, lon, dt, hr):
+    et = equation_of_time(doy)
+    merid = np.floor(lon / 15) * 15
+    if merid < 0:
+        merid += 15
+    lc = (lon - merid) * -4 / 60
+    tz = merid / 360 * 24
+    midbin = 0.5 * dt / 86400 * 24
+    t0 = 12 + lc - et - tz - midbin
+    h = np.pi / 12 * (hr - t0)
+    dec = -23.45 * np.pi / 180 * np.cos(2 * np.pi * (doy + 10) / 365)
+    cosz = np.sin(lat * np.pi / 180) * np.sin(dec) + np.cos(lat * np.pi / 180) * np.cos(dec) * np.cos(h)
+    return np.where(cosz < 0, 0, cosz)
+
+
+def downscale_solar_geom(doy, lon, lat):
+    doy = np.asarray(doy, dtype=float)
+    dt = np.median(np.diff(doy)) * 86400
+    hr = (doy - np.floor(doy)) * 24
+    cosz = cos_solar_zenith_angle(doy, lat, lon, dt, hr)
+    return 1366 * cosz
+
+
+################################################################################
+# hourly downscaling (ported from get_hourly() in R/to_hourly.R)
+################################################################################
+def get_hourly(df, mean_lon, mean_lat):
+    base = df[FINAL_COLS].copy()
+    # GEFS values come back as float32; upcast so downstream calculations
+    # (e.g. shortwave downscaling) don't overflow/raise on assignment
+    base["prediction"] = base["prediction"].astype("float64")
+
+    parameters = base["parameter"].unique()
+    variables = base["variable"].unique()
+    sites = base["site_id"].unique()
+    datetime_range = pd.date_range(base["datetime"].min(), base["datetime"].max(), freq="1h")
+
+    parameter_maxtime = (
+        base.groupby(["site_id", "family", "parameter"])["datetime"]
+        .max()
+        .reset_index()
+        .rename(columns={"datetime": "max_time"})
+    )
+
+    full_time = pd.MultiIndex.from_product(
+        [sites, parameters, datetime_range, variables],
+        names=["site_id", "parameter", "datetime", "variable"],
+    ).to_frame(index=False)
+
+    full_time = full_time.merge(parameter_maxtime, on=["site_id", "parameter"], how="left")
+    full_time = full_time[full_time["datetime"] <= full_time["max_time"]]
+    full_time = full_time.drop(columns=["max_time"]).drop_duplicates()
+
+    join_keys = ["site_id", "parameter", "datetime", "family", "variable"]
+
+    # states: linearly interpolated over time within each site/parameter/variable
+    states = full_time.merge(base, on=join_keys, how="left")
+    states = states[states["variable"].isin(STATE_VARS)].sort_values(["site_id", "parameter", "datetime"])
+    states["prediction"] = states.groupby(["site_id", "parameter", "variable"])["prediction"].transform(
+        lambda s: s.interpolate(method="linear", limit_direction="both")
+    )
+    states.loc[states["variable"] == "air_temperature", "prediction"] += 273
+    # NOTE: the original R code checked `variable == "RH"`, a name that never
+    # occurs after the rename above, so relative humidity is never divided by
+    # 100 here. Preserved as-is for output parity with the legacy script.
+
+    # fluxes: back-filled, then shortwave is downscaled using solar geometry
+    fluxes = full_time.merge(base, on=join_keys, how="left")
+    fluxes = fluxes[fluxes["variable"].isin(FLUX_VARS)].sort_values(["site_id", "family", "parameter", "datetime"])
+    fluxes["prediction"] = fluxes.groupby(["site_id", "family", "parameter", "variable"])["prediction"].transform(
+        lambda s: s.bfill()
+    )
+    fluxes.loc[fluxes["variable"] == "precipitation_flux", "prediction"] /= 6 * 60 * 60
+
+    fluxes["hour"] = fluxes["datetime"].dt.hour
+    fluxes["date"] = fluxes["datetime"].dt.date
+    fluxes["doy"] = fluxes["datetime"].dt.dayofyear + fluxes["hour"] / 24
+    fluxes["rpot"] = downscale_solar_geom(fluxes["doy"].to_numpy(), mean_lon, mean_lat)
+
+    group_cols = ["site_id", "family", "parameter", "date", "variable"]
+    fluxes["avg_sw"] = fluxes.groupby(group_cols)["prediction"].transform("mean")
+    fluxes["avg_rpot"] = fluxes.groupby(group_cols)["rpot"].transform("mean")
+
+    sw_mask = (fluxes["variable"] == "surface_downwelling_shortwave_flux_in_air") & (fluxes["avg_rpot"] > 0.0)
+    fluxes.loc[sw_mask, "prediction"] = (
+        fluxes.loc[sw_mask, "rpot"] * (fluxes.loc[sw_mask, "avg_sw"] / fluxes.loc[sw_mask, "avg_rpot"])
+    )
+
+    hourly_df = pd.concat([states[FINAL_COLS], fluxes[FINAL_COLS]], ignore_index=True)
+    hourly_df = hourly_df.sort_values(["site_id", "family", "variable", "datetime"]).reset_index(drop=True)
+    return hourly_df
+
+
+################################################################################
+# fetch + reformat one forecast cycle worth of met data
+################################################################################
+def get_temp_gefs(ds, site_id, start_time, bbox, lead_time=True):
+    lon_min, lat_min, lon_max, lat_max = bbox
+    mean_lat = (lat_min + lat_max) / 2
+    mean_lon = (lon_min + lon_max) / 2
+
+    temp = ds[VARS].sel(
+        init_time=str(start_time),
+        latitude=mean_lat,
+        longitude=mean_lon,
+        method="nearest",
+    )
+    temp_r = temp.assign_coords(
+        lead_hours=temp.lead_time.astype("timedelta64[h]").astype(int),
+        member_id=temp.ensemble_member,
+        init_time=temp.init_time,
+    )
+
+    if lead_time is not True:
+        # NOTE: mirrors the original R logic (`lead_hours <= 86400`). Since
+        # lead_hours is expressed in hours (max ~840 for a 35-day forecast)
+        # this comparison never actually filters anything; preserved as-is
+        # for output parity. The date filter at the end of this function is
+        # what actually restricts stage 3 downloads to a single day.
+        temp_r = temp_r.sel(lead_hours=temp_r.lead_hours <= 86400)
+
+    df = temp_r.to_dataframe().reset_index()
+    df = df.drop(
+        columns=["expected_forecast_length", "ingested_forecast_length", "latitude", "longitude", "spatial_ref", "lead_hours"],
+        errors="ignore",
+    )
+
+    id_vars = [c for c in df.columns if c not in VARS]
+    temp_df = df.melt(id_vars=id_vars, value_vars=VARS, var_name="variable", value_name="prediction")
+    temp_df["family"] = "ensemble"
+    temp_df["site_id"] = site_id
+    temp_df["init_time"] = pd.to_datetime(temp_df["init_time"]).dt.date
+    temp_df = temp_df.rename(
+        columns={"init_time": "reference_datetime", "valid_time": "datetime", "member_id": "parameter"}
+    )
+    temp_df["variable"] = temp_df["variable"].replace(VAR_RENAME)
+    temp_df["datetime"] = pd.to_datetime(temp_df["datetime"], utc=True)
+    temp_df["parameter"] = temp_df["parameter"].astype("float64")
+
+    hourly_df = get_hourly(temp_df, mean_lon, mean_lat)
+    hourly_df = hourly_df[hourly_df["datetime"].dt.date == pd.to_datetime(start_time).date()]
+    return hourly_df
+
+
+################################################################################
+# stage 2: one parquet file per reference_datetime/site_id
+################################################################################
+def get_stage_2(ds, start_date, end_date, site, bbox, base_dir="drivers/met/gefs-v12/stage2"):
+    dates = pd.date_range(start_date, end_date, freq="1D").date
+    for date in dates:
+        print(f"Downloading stage 2 met data for {date}", flush=True)
+        metdata = get_temp_gefs(ds, site, str(date), bbox).copy()
+        metdata["reference_datetime"] = date
+        for (ref_dt, site_id), group in metdata.groupby(["reference_datetime", "site_id"]):
+            out_dir = os.path.join(base_dir, f"reference_datetime={ref_dt}", f"site_id={site_id}")
+            os.makedirs(out_dir, exist_ok=True)
+            group.drop(columns=["reference_datetime", "site_id"]).to_parquet(
+                os.path.join(out_dir, "part-0.parquet"), index=False
+            )
+    print("Stage 2 data downloaded!")
+
+
+################################################################################
+# stage 3: 6-day window, one parquet file per site_id
+################################################################################
+def get_stage_3(ds, start_date, site, bbox, base_dir="drivers/met/gefs-v12/stage3"):
+    start = pd.to_datetime(start_date).date()
+    dates = pd.date_range(start, start + pd.Timedelta(days=5), freq="1D").date
+    stage3 = []
+    for date in dates:
+        print(f"Downloading stage 3 met data for {date}", flush=True)
+        metdata = get_temp_gefs(ds, site, str(date), bbox, lead_time=0)
+        stage3.append(metdata)
+    stage3 = pd.concat(stage3, ignore_index=True)
+    for site_id, group in stage3.groupby("site_id"):
+        out_dir = os.path.join(base_dir, f"site_id={site_id}")
+        os.makedirs(out_dir, exist_ok=True)
+        group.drop(columns=["site_id"]).to_parquet(os.path.join(out_dir, "part-0.parquet"), index=False)
+    print("Stage 3 data downloaded!")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Download NOAA GEFS met forecasts for FLARE from data.dynamical.org")
+    parser.add_argument("stage", choices=["stage2", "stage3"])
+    parser.add_argument("--site", required=True, help="site_id")
+    parser.add_argument(
+        "--bbox", required=True, nargs=4, type=float, metavar=("LEFT", "BOTTOM", "RIGHT", "TOP")
+    )
+    parser.add_argument("--start-date", required=True)
+    parser.add_argument("--end-date", required=False, help="required for stage2")
+    args = parser.parse_args()
+
+    # make sure http(s) access works regardless of the machine's default certs
+    os.environ["SSL_CERT_FILE"] = certifi.where()
+
+    print("Opening data from data.dynamical.org")
+    ds = xr.open_zarr(
+        "https://data.dynamical.org/noaa/gefs/forecast-35-day/latest.zarr?email=optional@email.com",
+        consolidated=True,
+        decode_timedelta=False,
+        chunks="auto",
+    )
+
+    if args.stage == "stage2":
+        if not args.end_date:
+            parser.error("--end-date is required for stage2")
+        get_stage_2(ds, args.start_date, args.end_date, args.site, args.bbox)
+    else:
+        get_stage_3(ds, args.start_date, args.site, args.bbox)
+
+
+if __name__ == "__main__":
+    main()

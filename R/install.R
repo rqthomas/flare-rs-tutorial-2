@@ -11,6 +11,6 @@ library(glmtools)
 devtools::install_github("FLARE-forecast/ropenmeteo", force = T, upgrade = "never")
 library(ropenmeteo)
 pacman::p_load('rstac', 'terra', 'stars', 'ggplot2', 'tidyterra', 'viridis', 'yaml', 
-               'gdalcubes', 'tmap', 'dplyr', 'tidyverse', 'sf', 'reticulate',
+               'gdalcubes', 'tmap', 'dplyr', 'tidyverse', 'sf',
                'arrow', 'raster', 'terra', 'elevatr', 'marmap', 'rLakeAnalyzer',
                'httr', 'jsonlite', 'readr')
