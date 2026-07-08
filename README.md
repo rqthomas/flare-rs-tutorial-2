@@ -1,5 +1,5 @@
 # flare-rs-tutorial
-Repo to test running FLARE with remote sensing data 🛰️
+Repo to test running FLARE user tool for CEF 🛰️
 
 To run this code:
 
