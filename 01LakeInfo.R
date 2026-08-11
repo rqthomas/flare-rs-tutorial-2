@@ -12,19 +12,38 @@
 ################################################################################
 
 # a four letter site name
-# EXAMPLE: wald for Walden Pond
-site <- "wald"
+site <- "wald" # walden pond
+# site <- "crla" # crescent lake
+# site <- "lcns" # loch ness
 
 # specify bounding box
+# walden pond
 bbox <- c(left = -71.3452,
           bottom = 42.4366,
           right = -71.3334,
           top = 42.4421)
 
+# # crescent lake
+# bbox <- c(left = -122.042,
+#           bottom = 43.457,
+#           right = -121.949,
+#           top = 43.506)
+# 
+# # loch ness
+# bbox <- c(left = -4.764,
+#           bottom = 57.134,
+#           right = -4.265,
+#           top = 57.417)
+
 # pick representative point(s) of lake
 # for example, if your lake is a perfect circle, a good point would be the
 # middle of the circle
+# wald
 points_df <- data.frame(lon = c(-71.3394), lat = c(42.4393))
+# crla
+# points_df <- data.frame(lon = c(-121.9908), lat = c(43.4772))
+# # lcns
+# points_df <- data.frame(lon = c(-4.4187), lat = c(57.3319))
 
 points <- st_as_sf(x = points_df,
                    coords = c("lon", "lat"),
@@ -36,8 +55,9 @@ points <- st_as_sf(x = points_df,
 # you may have to alter these dates depending on data availability
 # e.g. data may be sparse in England in the winter due to cloud cover
 # **START DATE MUST BE AFTER 2020-10-01**
-start_date <- "2026-06-01"
-end_date <- "2026-07-01"
+start_date <- "2026-07-01"
+#end_date <- "2026-06-15"
+end_date <- "2026-07-15"
 
 
 
