@@ -2,10 +2,10 @@
 # Author: Molly Stroud
 # Started 2/5/26
 ################################################################################
+
 # This script will run FLARE using the inputs created in 02Get_Inputs
 pacman::p_load('tidyverse', 'lubridate')
 remotes::install_github("FLARE-forecast/FLAREr", force = T, upgrade = 'never', ref = 'v3.1-dev')
-
 
 # This need to be set to run each experiment
 run_name <- "run"
@@ -29,15 +29,15 @@ options(future.globals.maxSize = 891289600)
 ### Set up simulation start and end dates
 
 num_forecasts <- 1
-days_between_forecasts <- 5
 forecast_horizon <- 5
-starting_date <- as_date(start_date) 
-second_date <- as_date(end_date) - days(days_between_forecasts)
+spin_up_days <- 5
 
-all_dates <- seq.Date(starting_date,second_date + days(days_between_forecasts * num_forecasts), by = 1)
+starting_date <- as_date(start_date)
+# spin-up runs from starting_date through second_date (inclusive)
+second_date <- starting_date + days(spin_up_days)
 
+all_dates <- seq.Date(starting_date, second_date + days(forecast_horizon * num_forecasts), by = 1)
 potential_date_list <- list(with_rs = all_dates)
-
 date_list <- potential_date_list[which(names(potential_date_list) %in% experiments)]
 
 models <- names(date_list)
@@ -46,9 +46,11 @@ start_dates <- as_date(rep(NA, num_forecasts + 1))
 end_dates <- as_date(rep(NA, num_forecasts + 1))
 start_dates[1] <- starting_date
 end_dates[1] <- second_date
+
 for(i in 2:(num_forecasts+1)){
+  # forecast begins immediately after spin-up / previous window ends
   start_dates[i] <- as_date(end_dates[i-1])
-  end_dates[i] <- start_dates[i] + days(days_between_forecasts)
+  end_dates[i] <- start_dates[i]
 }
 
 sims <- expand.grid(paste0(start_dates,"_",end_dates,"_", forecast_horizon), models)
