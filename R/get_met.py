@@ -170,7 +170,7 @@ def get_hourly(df, mean_lon, mean_lat):
 ################################################################################
 # fetch + reformat one forecast cycle worth of met data
 ################################################################################
-def get_temp_gefs(ds, site_id, start_time, bbox, lead_time=True):
+def get_temp_gefs(ds, site_id, start_time, bbox, lead_time=True, keep_only_day=True):
     lon_min, lat_min, lon_max, lat_max = bbox
     mean_lat = (lat_min + lat_max) / 2
     mean_lon = (lon_min + lon_max) / 2
@@ -214,7 +214,8 @@ def get_temp_gefs(ds, site_id, start_time, bbox, lead_time=True):
     temp_df["parameter"] = temp_df["parameter"].astype("float64")
 
     hourly_df = get_hourly(temp_df, mean_lon, mean_lat)
-    hourly_df = hourly_df[hourly_df["datetime"].dt.date == pd.to_datetime(start_time).date()]
+    if keep_only_day:
+        hourly_df = hourly_df[hourly_df["datetime"].dt.date == pd.to_datetime(start_time).date()]
     return hourly_df
 
 
@@ -225,7 +226,9 @@ def get_stage_2(ds, start_date, end_date, site, bbox, base_dir="drivers/met/gefs
     dates = pd.date_range(start_date, end_date, freq="1D").date
     for date in dates:
         print(f"Downloading stage 2 met data for {date}", flush=True)
-        metdata = get_temp_gefs(ds, site, str(date), bbox).copy()
+        # keep the full forecast lead time (the entire ~35-day GEFS cycle) so a
+        # forecast launched at `date` is covered across its full horizon
+        metdata = get_temp_gefs(ds, site, str(date), bbox, lead_time=True, keep_only_day=False).copy()
         metdata["reference_datetime"] = date
         for (ref_dt, site_id), group in metdata.groupby(["reference_datetime", "site_id"]):
             out_dir = os.path.join(base_dir, f"reference_datetime={ref_dt}", f"site_id={site_id}")
