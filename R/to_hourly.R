@@ -31,7 +31,6 @@ get_hourly <- function(df, mean_lon, mean_lat){
                                   "air_temperature", "eastward_wind", "northward_wind")) |>
     dplyr::arrange(site_id, parameter, datetime) |>
     dplyr::mutate(prediction =  imputeTS::na_interpolation(prediction, option = "linear")) |>
-    dplyr::mutate(prediction = ifelse(variable == "air_temperature", prediction + 273, prediction)) |>
     dplyr::mutate(prediction = ifelse(variable == "RH", prediction/100, prediction)) |>
     dplyr::ungroup()
   
