@@ -134,7 +134,9 @@ def get_hourly(df, mean_lon, mean_lat):
         lambda s: s.interpolate(method="linear", limit_direction="both")
     )
     states.loc[states["variable"] == "air_temperature", "prediction"] += 273
-    # NOTE: the original R code checked `variable == "RH"`, a name that never
+    # NOTE: raw GEFS temperature_2m from data.dynamical.org is in Celsius, so
+    # the +273 converts to Kelvin (exactly once) for FLARE, which expects Kelvin.
+    # The original R code checked `variable == "RH"`, a name that never
     # occurs after the rename above, so relative humidity is never divided by
     # 100 here. Preserved as-is for output parity with the legacy script.
 
@@ -235,11 +237,15 @@ def get_stage_2(ds, start_date, end_date, site, bbox, base_dir="drivers/met/gefs
 
 
 ################################################################################
-# stage 3: 6-day window, one parquet file per site_id
+# stage 3: historical met from start_date to end_date, one parquet file per site_id
 ################################################################################
-def get_stage_3(ds, start_date, site, bbox, base_dir="drivers/met/gefs-v12/stage3"):
+def get_stage_3(ds, start_date, site, bbox, end_date=None, base_dir="drivers/met/gefs-v12/stage3"):
     start = pd.to_datetime(start_date).date()
-    dates = pd.date_range(start, start + pd.Timedelta(days=5), freq="1D").date
+    if end_date is None:
+        end = start + pd.Timedelta(days=5)
+    else:
+        end = pd.to_datetime(end_date).date()
+    dates = pd.date_range(start, end, freq="1D").date
     stage3 = []
     for date in dates:
         print(f"Downloading stage 3 met data for {date}", flush=True)
@@ -261,7 +267,7 @@ def main():
         "--bbox", required=True, nargs=4, type=float, metavar=("LEFT", "BOTTOM", "RIGHT", "TOP")
     )
     parser.add_argument("--start-date", required=True)
-    parser.add_argument("--end-date", required=False, help="required for stage2")
+    parser.add_argument("--end-date", required=False, help="required for stage2; optional for stage3 (defaults to start+5 days)")
     args = parser.parse_args()
 
     # make sure http(s) access works regardless of the machine's default certs
@@ -280,7 +286,7 @@ def main():
             parser.error("--end-date is required for stage2")
         get_stage_2(ds, args.start_date, args.end_date, args.site, args.bbox)
     else:
-        get_stage_3(ds, args.start_date, args.site, args.bbox)
+        get_stage_3(ds, args.start_date, args.site, args.bbox, end_date=args.end_date)
 
 
 if __name__ == "__main__":
