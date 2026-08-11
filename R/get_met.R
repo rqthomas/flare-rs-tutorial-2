@@ -14,6 +14,95 @@
 .get_met_py_script <- file.path("R", "get_met.py")
 .get_met_venv <- file.path(getwd(), ".venv-met")
 
+.normalize_stage3_met <- function(site_id, bbox, base_dir = file.path("drivers", "met", "gefs-v12", "stage3")) {
+  met_dir <- file.path(base_dir, paste0("site_id=", site_id))
+  met_file <- file.path(met_dir, "part-0.parquet")
+
+  if (!file.exists(met_file)) {
+    return(invisible(FALSE))
+  }
+
+  met_df <- arrow::read_parquet(met_file)
+  met_df$datetime <- lubridate::as_datetime(met_df$datetime, tz = "UTC")
+
+  if (!"site_id" %in% names(met_df)) {
+    met_df$site_id <- site_id
+  }
+
+  unique_time <- sort(unique(met_df$datetime))
+  needs_hourly <- length(unique_time) >= 2 &&
+    as.numeric(difftime(unique_time[2], unique_time[1], units = "hours")) > 1
+
+  flux_vars <- c("precipitation_flux", "surface_downwelling_shortwave_flux_in_air", "surface_downwelling_longwave_flux_in_air")
+  flux_summary <- met_df |>
+    dplyr::filter(variable %in% flux_vars) |>
+    dplyr::group_by(variable) |>
+    dplyr::summarise(non_na = sum(!is.na(prediction)), .groups = "drop")
+  missing_flux_var <- any(!flux_vars %in% flux_summary$variable)
+  empty_flux_var <- any(flux_summary$non_na == 0)
+  needs_flux_repair <- missing_flux_var || empty_flux_var
+
+  if (!needs_hourly && !needs_flux_repair) {
+    return(invisible(FALSE))
+  }
+
+  source(file.path("R", "to_hourly.R"), local = TRUE)
+
+  if (needs_hourly) {
+    mean_lon <- mean(c(as.numeric(bbox[["left"]]), as.numeric(bbox[["right"]])))
+    mean_lat <- mean(c(as.numeric(bbox[["bottom"]]), as.numeric(bbox[["top"]])))
+    met_df <- get_hourly(met_df,
+                         mean_lon = mean_lon,
+                         mean_lat = mean_lat)
+    met_df$datetime <- lubridate::as_datetime(met_df$datetime, tz = "UTC")
+  }
+
+  if (needs_flux_repair) {
+    if (!"site_id" %in% names(met_df)) {
+      met_df$site_id <- site_id
+    }
+
+    air_temp_lookup <- met_df |>
+      dplyr::filter(variable == "air_temperature") |>
+      dplyr::select(parameter, datetime, air_temp_k = prediction)
+
+    mean_lon <- mean(c(as.numeric(bbox[["left"]]), as.numeric(bbox[["right"]])))
+    mean_lat <- mean(c(as.numeric(bbox[["bottom"]]), as.numeric(bbox[["top"]])))
+    solar_lon <- ifelse(mean_lon < 0, 360 + mean_lon, mean_lon)
+
+    met_df <- met_df |>
+      dplyr::left_join(air_temp_lookup, by = c("parameter", "datetime")) |>
+      dplyr::mutate(
+        prediction = dplyr::case_when(
+          variable == "precipitation_flux" & is.na(prediction) ~ 0,
+          variable == "surface_downwelling_shortwave_flux_in_air" & is.na(prediction) ~
+            downscale_solar_geom(
+              lubridate::yday(datetime) + lubridate::hour(datetime) / 24,
+              solar_lon,
+              mean_lat
+            ) * 0.5,
+          variable == "surface_downwelling_longwave_flux_in_air" & is.na(prediction) ~
+            0.97 * 5.67e-8 * (air_temp_k^4),
+          TRUE ~ prediction
+        )
+      ) |>
+      dplyr::select(-air_temp_k) |>
+      dplyr::group_by(site_id, family, parameter, variable) |>
+      dplyr::arrange(datetime, .by_group = TRUE) |>
+      tidyr::fill(prediction, .direction = "downup") |>
+      dplyr::ungroup()
+  }
+
+  met_df |>
+    dplyr::select(-site_id) |>
+    arrow::write_parquet(met_file)
+
+  message(paste0("Normalized stage3 met data for site ", site_id,
+                 " (hourly: ", needs_hourly,
+                 ", flux_repair: ", needs_flux_repair, ")."))
+  invisible(TRUE)
+}
+
 # path to the python executable inside the dedicated virtual environment
 .get_met_venv_python <- function() {
   if (.Platform$OS.type == "windows") {
@@ -75,6 +164,19 @@
   if (result != 0) {
     stop("get_met.py failed. See the messages above for details.")
   }
+
+  if (length(args) >= 2 && identical(as.character(args[[1]]), "stage3")) {
+    site_idx <- which(as.character(args) == "--site")
+    bbox_idx <- which(as.character(args) == "--bbox")
+
+    if (length(site_idx) == 1 && length(bbox_idx) == 1 && (bbox_idx + 4) <= length(args)) {
+      site_id <- as.character(args[[site_idx + 1]])
+      bbox_vals <- as.numeric(args[(bbox_idx + 1):(bbox_idx + 4)])
+      bbox <- c(left = bbox_vals[1], bottom = bbox_vals[2], right = bbox_vals[3], top = bbox_vals[4])
+      .normalize_stage3_met(site_id = site_id, bbox = bbox)
+    }
+  }
+
   invisible(result)
 }
 
