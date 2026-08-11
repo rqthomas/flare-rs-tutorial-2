@@ -95,7 +95,11 @@ get_vals <- function(points, thermal_data){
   }
   # if only one point, add back in time column and rearrange to format
   if(length(vals_df) < 3){
-    vals_df$time <- st_dimensions(thermal_data)$time$values$start
+    if(nrow(vals_df) > 1){
+      vals_df$time <- st_dimensions(thermal_data)$time$values$start
+    } else{
+      vals_df$time <- st_dimensions(thermal_data)$time$offset
+    }
     vals_df <- vals_df |>
       relocate(thermal_C, .after = time)
   }

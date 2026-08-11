@@ -7,7 +7,9 @@
 #pacman::p_load(tidyverse)
 get_kw_US <- function(bbox){
   message("Downloading LAGOS Lake Information")
-  lakeinfo <- read_csv("https://pasta.lternet.edu/package/data/eml/edi/854/1/007ca4f5ec02bb5809fc661dcfa7a903")
+  # lakeinfo <- read_csv("https://pasta.lternet.edu/package/data/eml/edi/854/1/007ca4f5ec02bb5809fc661dcfa7a903")
+  # https://portal.edirepository.org/nis/mapbrowse?packageid=edi.854.1
+  lakeinfo <- read_csv("lake_information.csv")
   mylake <- lakeinfo |>
     #filter(str_detect(lake_namegnis, lakename))
     filter(bbox["left"] < lake_lon_decdeg & bbox["right"] > lake_lon_decdeg) |>
