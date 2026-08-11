@@ -24,7 +24,7 @@ lake_directory <- here::here()
 Sys.setenv('GLM_PATH'=paste0(lake_directory, '/binary/macos/glm'))
 options(future.globals.maxSize = 891289600)
 
-walk(list.files(file.path(lake_directory, "R"), full.names = TRUE), source)
+#walk(list.files(file.path(lake_directory, "R"), full.names = TRUE), source)
 
 ### Set up simulation start and end dates
 

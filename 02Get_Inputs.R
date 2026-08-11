@@ -70,7 +70,6 @@ write_csv(targets, paste0('targets/', site, '/', site, '-targets-rs.csv'))
   "--start-date", as.character(as.Date(start_date)),
   "--end-date", as.character(as.Date(end_date))
 ))
-message("Stage 2 data downloaded!")
 
 # stage 3: calls R/get_met.py directly
 .run_get_met_py(c(
@@ -79,8 +78,6 @@ message("Stage 2 data downloaded!")
   "--bbox", bbox[["left"]], bbox[["bottom"]], bbox[["right"]], bbox[["top"]],
   "--start-date", as.character(as.Date(start_date))
 ))
-message("Stage 3 data downloaded!")
-
 
 ################################################################################
 # 3. Get bathymetric data
@@ -119,6 +116,8 @@ mylake_kw <- get_kw_US(bbox)
 
 ################################################################################
 # 5. Estimate sediment zone info
+# This will be removed when I incorporate the newest version of FLARE, but am 
+# keeping now for the tutorial
 ################################################################################
 # first get air temperature data over a few years
 era5_download <- get_historical_weather(latitude = points_df$lat[1],
