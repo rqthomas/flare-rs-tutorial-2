@@ -8,21 +8,20 @@
 # 2. Download meteorological data
 # 3. Grab bathymetry data
 # 4. Grab Kw factor
-# 5. Eestimate sediment zone info
+# 5. Estimate sediment zone info
 # 6. Create GLM and config yml file
 
 # get scripts needed to run this code
 source("R/install.R")
 source("01LakeInfo.R")
-# only source .R files -- R/ also contains get_met.py (called as a subprocess,
-# not sourced) plus its __pycache__/ build directory, neither of which R's
-# source() can parse
 walk(list.files(file.path(here::here(), "R"), pattern = "\\.R$", full.names = TRUE), source)
 
 ################################################################################
 # 1. Download remote sensing data
 # Warning: if you are trying to download data over a long period of time (>>1yr) 
 # or over a large lake, this will take a long time.
+# If you are downloading over a very short period of time (<2 weeks), there is
+# a high chance no data will be available.
 ################################################################################
 thermaldata <- get_lst(bbox, 
         paste0(start_date, "T00:00:00Z"), 
@@ -39,7 +38,7 @@ ggplot() +
 # get values
 thermal_vals <- get_vals(points, thermaldata)
 output <- clean_data(thermal_vals)
-#write_csv(output, '/Users/mollystroud/Desktop/fcre-targets-rs.csv')
+
 # create directory for targets file & save
 dir.create(paste0('./targets/', site, '/'), recursive = T)
 write_csv(output, paste0('targets/', site, '/', site, '-targets-rs.csv'))
@@ -63,8 +62,7 @@ write_csv(targets, paste0('targets/', site, '/', site, '-targets-rs.csv'))
 # Warning: this may take a while depending on length of your date range
 # Warning: Python must be installed to run this 
 ################################################################################
-# stage 2: calls R/get_met.py directly (one forecast cycle per day in range)
-# see R/get_met.R for the Python environment setup helpers (.run_get_met_py)
+# stage 2: calls R/get_met.py directly 
 .run_get_met_py(c(
   "stage2",
   "--site", site,
@@ -74,7 +72,7 @@ write_csv(targets, paste0('targets/', site, '/', site, '-targets-rs.csv'))
 ))
 message("Stage 2 data downloaded!")
 
-# stage 3: calls R/get_met.py directly (6-day forecast window from start_date)
+# stage 3: calls R/get_met.py directly
 .run_get_met_py(c(
   "stage3",
   "--site", site,
