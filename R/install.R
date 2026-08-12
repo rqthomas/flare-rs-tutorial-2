@@ -4,7 +4,7 @@
 ################################################################################
 
 # This script will install all necessary packages to run FLARE 
-install.packages('remotes', 'pacman')
+install.packages('remotes', 'pacman', 'devtools')
 remotes::install_github('rqthomas/GLM3r')
 remotes::install_github('usgs-r/glmtools', force = T, upgrade = 'never')
 library(glmtools)
