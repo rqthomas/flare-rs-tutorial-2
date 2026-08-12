@@ -5,13 +5,13 @@ To run this code:
 
 ✦ Clone the repo
 
-✦ Input your desired lake info and date range in 01LakeInfo
+✦ Input your desired lake info and date range in 01LakeInfo (or use one of the pre-selected lakes)
 
 ✦ Run 02GetInputs to get necessary inputs (remote sensing data, met data, etc) for FLARE
 
-✦ Run 03RunFLARE to get your forecasts
+✦ Run 03RunFLARE to get your forecasts, which you can look at in /plots.
 
 
 Note: The GLM binary used in this repo (/binary/macos/glm) is for MacOS users only. 
-or Windows or Linux users, please replace this binary with the appropriate GLM file 
-(see https://github.com/AquaticEcoDynamics/glm-aed)
+For Windows or Linux users, please replace this binary with the appropriate GLM file 
+(see https://github.com/AquaticEcoDynamics/glm-aed).
