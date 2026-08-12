@@ -4,11 +4,12 @@
 ################################################################################
 
 # This script will install all necessary packages to run FLARE 
-install.packages('remotes', 'pacman', 'devtools')
+install.packages('remotes', 'pacman')
 remotes::install_github('rqthomas/GLM3r')
+library(GLM3r)
 remotes::install_github('usgs-r/glmtools', force = T, upgrade = 'never')
 library(glmtools)
-devtools::install_github("FLARE-forecast/ropenmeteo", force = T, upgrade = "never")
+remotes::install_github("FLARE-forecast/ropenmeteo", force = T, upgrade = "never")
 library(ropenmeteo)
 pacman::p_load('rstac', 'terra', 'stars', 'ggplot2', 'tidyterra', 'viridis', 'yaml', 
                'gdalcubes', 'tmap', 'dplyr', 'tidyverse', 'sf',
