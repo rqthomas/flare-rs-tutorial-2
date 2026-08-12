@@ -45,13 +45,9 @@ write_csv(output, paste0('targets/', site, '/', site, '-targets-rs.csv'))
 
 # now download SWOT data for changes in lake depth 
 swot_data <- get_swot(bbox, start_date, end_date, site)
-
-# see what it looks like!
-ggplot() +
-  geom_line(data = swot_data, aes(x = datetime, y = observation)) +
-  theme_classic() +
-  labs(x = element_blank(), y = element_blank())
-
+if(nrow(swot_data) != 0){
+  swot_data$datetime <- as.Date(swot_data$datetime)
+}
 targets <- read_csv(paste0('targets/', site, '/', site, '-targets-rs.csv'))
 targets <- rbind(swot_data, targets)
 write_csv(targets, paste0('targets/', site, '/', site, '-targets-rs.csv'))
@@ -76,7 +72,8 @@ write_csv(targets, paste0('targets/', site, '/', site, '-targets-rs.csv'))
   "stage3",
   "--site", site,
   "--bbox", bbox[["left"]], bbox[["bottom"]], bbox[["right"]], bbox[["top"]],
-  "--start-date", as.character(as.Date(start_date))
+  "--start-date", as.character(as.Date(start_date)),
+  "--end-date", as.character(as.Date(end_date))
 ))
 
 ################################################################################
@@ -108,7 +105,7 @@ mylake_kw <- get_kw_US(bbox)
 # mylake_kw <- 1.7/1
 
 # If your lake is somewhere between turbid and clear (Secchi > 1, < 5):
-#ylake_kw <- 1.7/3
+# mylake_kw <- 1.7/3
 
 # If your lake is very clear (Secchi > 5):
 # mylake_kw <-  1.7/5
@@ -134,31 +131,33 @@ sed_data <- get_sed_zone_data(era5_download,
 ################################################################################
 # 6. Create GLM file and config files
 ################################################################################
-# create list of variable values & names for input to nml
-var_list <- list(site, mylake_kw, site, points_df[[2]][1], points_df[[1]][1],
-                 dim(ha)[1], rev(ha$depths), rev(ha$Area.at.z), rev(max(ha$depths) - min(ha$depths)), 
-                 sed_data$sed_temp, sed_data$sed_amp, sed_data$doy,
-                 sed_data$zone_heights, sed_data$nzones[1])
-var_name_list <- list("sim_name", "Kw", "lake_name", "latitude", "longitude",
-                      "bsn_vals", "H", "A", "lake_depth",
-                      "sed_temp_mean", "sed_temp_amplitude", "sed_temp_peak_doy",
-                      "zone_heights", "n_zones")
-# update nml
-update_nml(var_list, var_name_list, 
-           working_directory = 'configuration/analysis', nml = 'glm3.nml')
-
 # update configure_flare yml
 yml <- yaml::read_yaml("configuration/analysis/configure_flare.yml")
 yml$location$site_id <- site
 yml$location$latitude <- points_df[[2]][1]
 yml$location$longitude <- points_df[[1]][1]
-yml$default_init$lake_depth <- (max(ha$depths) - min(ha$depths))
-yml$default_init$temp <- rep(sed_data$water_temp_init[1], times = yml$default_init$lake_depth+1)
-yml$default_init$temp_depths <- seq(0, yml$default_init$lake_depth)
-yml$model_settings$modeled_depths <- seq(0, yml$default_init$lake_depth)
+yml$default_init$lake_depth <- rev(max(ha$depths) - min(ha$depths))
+modeled_depths <- seq(0, yml$default_init$lake_depth-1)
+yml$default_init$temp <- rep(sed_data$water_temp_init[1], times = length(modeled_depths))
+yml$default_init$temp_depths <- modeled_depths
+yml$model_settings$modeled_depths <- modeled_depths
 
 yaml::write_yaml(yml, "configuration/analysis/configure_flare.yml")
 
+# create list of variable values & names for input to nml
+var_list <- list(site, mylake_kw, site, points_df[[2]][1], points_df[[1]][1],
+                 dim(ha)[1], rev(ha$depths), rev(ha$Area.at.z), rev(max(ha$depths) - min(ha$depths))-0.5, 
+                 sed_data$sed_temp, sed_data$sed_amp, sed_data$doy,
+                 sed_data$zone_heights, sed_data$nzones[1],
+                 length(modeled_depths)-1, modeled_depths, yml$default_init$temp, rep(0, times = length(modeled_depths)))
+var_name_list <- list("sim_name", "Kw", "lake_name", "latitude", "longitude",
+                      "bsn_vals", "H", "A", "lake_depth",
+                      "sed_temp_mean", "sed_temp_amplitude", "sed_temp_peak_doy",
+                      "zone_heights", "n_zones",
+                      "num_heights", "the_heights", "the_temps", "the_sals")
+# update nml
+update_nml(var_list, var_name_list, 
+           working_directory = 'configuration/analysis', nml = 'glm3.nml')
 
 ################################################################################
 # Now, open 03FLARE to run FLARE

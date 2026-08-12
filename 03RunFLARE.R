@@ -27,14 +27,14 @@ options(future.globals.maxSize = 891289600)
 #walk(list.files(file.path(lake_directory, "R"), full.names = TRUE), source)
 
 ### Set up simulation start and end dates
-
 num_forecasts <- 1
+days_between_forecasts <- 1
 forecast_horizon <- 5
-spin_up_days <- 5
+starting_date <- as_date(start_date) 
+second_date <- as_date(start_date) + 2*days(days_between_forecasts)
 
-starting_date <- as_date(start_date)
-# spin-up runs from starting_date through second_date (inclusive)
-second_date <- starting_date + days(spin_up_days)
+
+
 
 all_dates <- seq.Date(starting_date, second_date + days(forecast_horizon * num_forecasts), by = 1)
 potential_date_list <- list(with_rs = all_dates)

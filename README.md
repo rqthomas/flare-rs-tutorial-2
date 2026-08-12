@@ -1,5 +1,5 @@
 # flare-rs-tutorial
-Repo to test running FLARE with remote sensing data 🛰️
+Repo to test running FLARE user tool for CEF 🛰️
 
 To run this code:
 
@@ -10,3 +10,8 @@ To run this code:
 ✦ Run 02GetInputs to get necessary inputs (remote sensing data, met data, etc) for FLARE
 
 ✦ Run 03RunFLARE to get your forecasts
+
+
+Note: The GLM binary used in this repo (/binary/macos/glm) is for MacOS users only. 
+or Windows or Linux users, please replace this binary with the appropriate GLM file 
+(see https://github.com/AquaticEcoDynamics/glm-aed)
