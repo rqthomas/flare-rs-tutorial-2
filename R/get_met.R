@@ -11,8 +11,16 @@
 # .run_get_met_py() directly for stage 2 / stage 3 downloads.
 ################################################################################
 
-.get_met_py_script <- file.path("R", "get_met.py")
-.get_met_venv <- file.path(getwd(), ".venv-met")
+.get_project_root <- function() {
+  root <- tryCatch(here::here(), error = function(e) NA_character_)
+  if (!is.na(root) && nzchar(root) && dir.exists(root)) {
+    return(normalizePath(root, winslash = "/", mustWork = FALSE))
+  }
+  normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+}
+
+.get_met_py_script <- file.path(.get_project_root(), "R", "get_met.py")
+.get_met_venv <- file.path(.get_project_root(), ".venv-met")
 
 .normalize_stage3_met <- function(site_id, bbox, base_dir = file.path("drivers", "met", "gefs-v12", "stage3")) {
   met_dir <- file.path(base_dir, paste0("site_id=", site_id))
@@ -113,22 +121,47 @@
 }
 
 # make sure a python3 interpreter + dedicated venv with the right packages exist
-.ensure_met_python_env <- function() {
-  system_python <- Sys.which("python3")
-  if (system_python == "") {
-    stop(
-      "python3 was not found on your PATH. Please install Python 3 ",
-      "(https://www.python.org/downloads/) and try again."
-    )
+.find_system_python <- function() {
+  if (.Platform$OS.type == "windows") {
+    py_launcher <- Sys.which("py")
+    if (nzchar(py_launcher)) {
+      return(list(cmd = py_launcher, args = c("-3"), label = "py -3"))
+    }
   }
+
+  python3 <- Sys.which("python3")
+  if (nzchar(python3)) {
+    return(list(cmd = python3, args = character(0), label = "python3"))
+  }
+
+  python <- Sys.which("python")
+  if (nzchar(python)) {
+    return(list(cmd = python, args = character(0), label = "python"))
+  }
+
+  stop(
+    "Could not find a Python 3 interpreter on PATH. Tried py -3 (Windows), ",
+    "python3, and python. Please install Python 3 and try again."
+  )
+}
+
+.ensure_met_python_env <- function() {
+  system_python <- .find_system_python()
 
   venv_python <- .get_met_venv_python()
 
+  if (!file.exists(.get_met_py_script)) {
+    stop("Could not find get_met.py at: ", .get_met_py_script)
+  }
+
   if (!file.exists(venv_python)) {
     message("Creating a dedicated Python environment for met data downloads (.venv-met)...")
-    result <- system2(system_python, c("-m", "venv", shQuote(.get_met_venv)))
+    result <- system2(system_python$cmd, c(system_python$args, "-m", "venv", .get_met_venv))
     if (result != 0) {
-      stop("Failed to create the Python virtual environment used by get_met.py.")
+      stop(
+        "Failed to create the Python virtual environment used by get_met.py ",
+        "with interpreter: ", system_python$label
+      )
     }
   }
 
@@ -160,7 +193,7 @@
 # run get_met.py with the given CLI args, stopping with a clear error on failure
 .run_get_met_py <- function(args) {
   venv_python <- .ensure_met_python_env()
-  result <- system2(venv_python, c(shQuote(.get_met_py_script), as.character(args)))
+  result <- system2(venv_python, c(.get_met_py_script, as.character(args)))
   if (result != 0) {
     stop("get_met.py failed. See the messages above for details.")
   }
