@@ -140,6 +140,9 @@ if(!is.na(max_depth_allowed) & !is.null(max_depth_allowed)){
   ha[which(abs_z <= max_depth_allowed), ]
 }
 
+
+bsn_dims <- get_bsn_dims(bathy)
+
 ################################################################################
 # 4. Get Kw factor (light extinction)
 # If your lake of interest is in the US, use the function get_kw_US
@@ -196,9 +199,11 @@ yaml::write_yaml(yml, file.path("configuration", config_set_name, config_flare_f
 # create list of variable values & names for input to nml
 var_list <- list(site_id, mylake_kw, site_id, points_df[[2]][1], points_df[[1]][1],
                  dim(ha)[1], rev(ha$depths), rev(ha$Area.at.z), rev(max(ha$depths) - min(ha$depths))-0.5,
+                 bsn_dims$bsn_len, bsn_dims$bsn_wid,
                  sed_data$zone_heights, sed_data$nzones[1])
 var_name_list <- list("sim_name", "Kw", "lake_name", "latitude", "longitude",
                       "bsn_vals", "H", "A", "lake_depth",
+                      "bsn_len", "bsn_wid",
                       "zone_heights", "n_zones")
 
 # update nml

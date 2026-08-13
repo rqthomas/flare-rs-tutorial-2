@@ -71,9 +71,46 @@ get_ha <- function(bathy_raster, points){
   #convert depth back to elevation
   area_layers$depths <- (area_layers$depths + min_elevation) *-1
   area_layers$depths <- area_layers$depths + elev$elevation
-  plot(area_layers$Area.at.z, area_layers$depths, type = 'l', 
+  plot(area_layers$Area.at.z, area_layers$depths, type = 'l',
        xlab = 'Area at Depth (m2)', ylab = 'Depth (m)', main = 'GLOBathy')
   return(area_layers)
+}
+
+# calculate GLM's bsn_len and bsn_wid (basin length and width at full pond)
+# from the lake extent (non-NA cells) of the bathymetry raster
+get_bsn_dims <- function(bathy_raster){
+  # non-NA cells represent the water body extent at full water level
+  bathy_df <- as.data.frame(bathy_raster, xy = TRUE)
+  bathy_df <- na.omit(bathy_df)
+  colnames(bathy_df) <- c("Longitude", "Latitude", "Elevation")
+
+  lake_pts <- sf::st_as_sf(bathy_df, coords = c("Longitude", "Latitude"),
+                            crs = sf::st_crs(bathy_raster))
+
+  # reproject to the local UTM zone so distances are measured in meters on a planar grid
+  centroid <- sf::st_coordinates(sf::st_centroid(sf::st_union(lake_pts)))
+  utm_zone <- floor((centroid[1] + 180) / 6) + 1
+  utm_epsg <- ifelse(centroid[2] >= 0, 32600, 32700) + utm_zone
+  lake_pts_utm <- sf::st_transform(lake_pts, crs = utm_epsg)
+
+  # basin outline at full water level
+  hull <- sf::st_convex_hull(sf::st_union(lake_pts_utm))
+  hull_coords <- sf::st_coordinates(hull)[, c("X", "Y")]
+
+  # bsn_len = max distance between any two points on the basin outline
+  d <- as.matrix(dist(hull_coords))
+  max_idx <- which(d == max(d), arr.ind = TRUE)[1, ]
+  bsn_len <- max(d)
+
+  # bsn_wid = max extent of the basin perpendicular to the length axis
+  p1 <- hull_coords[max_idx[1], ]
+  p2 <- hull_coords[max_idx[2], ]
+  axis_unit <- (p2 - p1) / sqrt(sum((p2 - p1)^2))
+  perp_unit <- c(-axis_unit[2], axis_unit[1])
+  perp_proj <- sweep(hull_coords, 2, p1) %*% perp_unit
+  bsn_wid <- max(perp_proj) - min(perp_proj)
+
+  return(list(bsn_len = bsn_len, bsn_wid = bsn_wid))
 }
 
 
