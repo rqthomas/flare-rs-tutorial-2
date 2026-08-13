@@ -1,0 +1,7 @@
+&aed_models
+   models = 'aed_environ'
+/
+&aed_environ
+   n_environs = 1
+   environs = 'temperature'
+/

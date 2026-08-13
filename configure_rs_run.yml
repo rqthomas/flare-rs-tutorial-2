@@ -1,0 +1,29 @@
+start_datetime: 2026-07-01 00:00:00
+forecast_start_datetime: 2026-07-10  00:00:00
+forecast_horizon: 5
+lakes:
+  wacc:
+  # specify bounding box
+    bbox:
+      left: -78.579977
+      bottom: 34.255503
+      right: -78.457754
+      top: 34.320036
+    # pick representative point(s) of lake
+    # for example, if your lake is a perfect circle, a good point would be the
+    # middle of the circle
+    focal_point:
+      lat: 34.290116
+      lon: -78.510283
+   # If your lake of interest is in the US, set type: us
+   # If your lake of interest is outside the US, set type: global
+   # If your lake was unavailable in either of these databases,
+   # you may set value to a non na value
+   # If your lake is very turbid (Secchi < 1) = value: 1.7/1
+   #If your lake is somewhere between turbid and clear (Secchi > 1, < 5) = value: 1.7/3
+   #If your lake is very clear (Secchi > 5) = value: 1.7/5
+    Kw:
+      type: us
+      value: .na
+      lake_row: 1
+    max_depth_allowed: 6

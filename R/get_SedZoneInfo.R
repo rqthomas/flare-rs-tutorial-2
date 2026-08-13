@@ -23,9 +23,9 @@ get_sed_zone_data <- function(era5, depth, start_date){
     z1 <- depth + 1
     sed_amp <- airtemp_amp
     sed_doy <- airtemp_peakdoy
-    return(data.frame(cbind(sed_temp, sed_amp, doy = sed_doy, 
+    return(data.frame(cbind(sed_temp, sed_amp, doy = sed_doy,
                             nzones, zone_heights = z1, water_temp_init)))
-  } 
+  }
   if(depth > 5 & depth <= 10) {
     nzones <- 2
     z1 <- depth + 1
@@ -41,8 +41,8 @@ get_sed_zone_data <- function(era5, depth, start_date){
     )
     mean_temp <- mean(avg_airtemps$smoothed, na.rm = T)
     sed_doy_z2 <- (sed_doy_z1 + airtemp_peakdoy) / 1.8
-    return(data.frame(cbind(sed_temp, sed_amp = c(sed_amp_z2, sed_amp_z1), 
-                            doy = c(sed_doy_z2, sed_doy_z1), 
+    return(data.frame(cbind(sed_temp, sed_amp = c(sed_amp_z2, sed_amp_z1),
+                            doy = c(sed_doy_z2, sed_doy_z1),
                             nzones, zone_heights = c(z2, z1),
                             water_temp_init)))
   } else {
@@ -63,8 +63,29 @@ get_sed_zone_data <- function(era5, depth, start_date){
     mean_temp <- mean(avg_airtemps$smoothed, na.rm = T)
     sed_doy_z3 <- which(diff(avg_airtemps$smoothed > mean_temp) != 0)[-1]
     sed_doy_z2 <- (sed_doy_z1 + airtemp_peakdoy) / 1.8
-    return(data.frame(cbind(sed_temp, sed_amp = c(sed_amp_z3, sed_amp_z2, sed_amp_z1), 
-                 doy = c(sed_doy_z3, sed_doy_z2, sed_doy_z1), 
+    return(data.frame(cbind(sed_temp, sed_amp = c(sed_amp_z3, sed_amp_z2, sed_amp_z1),
+                 doy = c(sed_doy_z3, sed_doy_z2, sed_doy_z1),
                  nzones, zone_heights = c(z3, z2, z1), water_temp_init)))
+  }
+}
+
+# THIS SHOULD BE GENERALIZED
+set_sed_zones <- function(depth){
+  if(depth <=5){
+    nzones <- 1
+    z1 <- depth + 1
+    return(data.frame(cbind(nzones, zone_heights = z1)))
+  }
+  if(depth > 5 & depth <= 10) {
+    nzones <- 2
+    z1 <- depth + 1
+    z2 <- 7
+    return(data.frame(cbind(nzones, zone_heights = c(z2, z1))))
+  } else {
+    nzones <- 3
+    z1 <- depth + 1
+    z2 <- z1*2/3
+    z3 <- z1*1/3
+    return(data.frame(cbind(nzones, zone_heights = c(z3, z2, z1))))
   }
 }

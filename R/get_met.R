@@ -165,49 +165,76 @@
     }
   }
 
+  # bump this when `packages` below changes so existing .venv-met installs
+  # (which skip installation once the marker file exists) get upgraded
+  required_marker <- "packages-v2"
+
   marker <- file.path(.get_met_venv, "packages_installed.txt")
-  if (!file.exists(marker)) {
-    message("Installing required Python packages for met data downloads (this only happens once)...")
+  installed_marker <- if (file.exists(marker)) readLines(marker, warn = FALSE)[1] else NA_character_
+
+  if (!identical(installed_marker, required_marker)) {
+    message("Installing required Python packages for met data downloads...")
     packages <- c(
       "dask==2025.1.0",
       "xarray[complete]==2026.1.0",
-      "zarr==3.0.8",
+      "zarr>=3.2,<4",
       "certifi",
       "numpy",
       "pandas",
       "pyarrow",
       "requests",
-      "aiohttp"
+      "aiohttp",
+      "dynamical-catalog"
     )
+    # shQuote() protects package specifiers with shell-special characters
+    # (e.g. "zarr>=3.2,<4") from being interpreted by the shell that
+    # system2() invokes them through
     system2(venv_python, c("-m", "pip", "install", "--quiet", "--upgrade", "pip"))
-    result <- system2(venv_python, c("-m", "pip", "install", "--quiet", packages))
+    result <- system2(venv_python, c("-m", "pip", "install", "--quiet", shQuote(packages)))
     if (result != 0) {
       stop("Failed to install the Python packages required by get_met.py.")
     }
-    writeLines("ok", marker)
+    writeLines(required_marker, marker)
   }
 
   venv_python
 }
 
-# run get_met.py with the given CLI args, stopping with a clear error on failure
-.run_get_met_py <- function(args) {
+# Run get_met.py for a single reference_datetime.
+#
+# For "stage2", one forecast cycle (the full ~35-day horizon) for that
+# reference_datetime is downloaded. The Python CLI uses --start-date==--end-date
+# (both set to reference_datetime) so every forecast horizon is retained. For
+# "stage3", reference_datetime is the start date and end_date is its optional
+# end date; stage3 pulls from the NOAA GEFS *analysis* dataset (a single
+# deterministic time series, not per-day forecast cycles), so the whole
+# start_date..end_date window is fetched in one request.
+.run_get_met_py <- function(stage, site_id, bbox, reference_datetime, end_date = NULL) {
+  stage <- match.arg(stage, c("stage2", "stage3"))
+
+  if (identical(stage, "stage2")) {
+    end_date <- reference_datetime
+    if (is.null(end_date)) {
+      stop("reference_datetime is required for stage2.")
+    }
+  }
+
+  args <- c(
+    stage,
+    "--site", site_id,
+    "--bbox", bbox[["left"]], bbox[["bottom"]], bbox[["right"]], bbox[["top"]],
+    "--start-date", as.character(reference_datetime),
+    "--end-date", as.character(end_date)
+  )
+
   venv_python <- .ensure_met_python_env()
   result <- system2(venv_python, c(.get_met_py_script, as.character(args)))
   if (result != 0) {
     stop("get_met.py failed. See the messages above for details.")
   }
 
-  if (length(args) >= 2 && identical(as.character(args[[1]]), "stage3")) {
-    site_idx <- which(as.character(args) == "--site")
-    bbox_idx <- which(as.character(args) == "--bbox")
-
-    if (length(site_idx) == 1 && length(bbox_idx) == 1 && (bbox_idx + 4) <= length(args)) {
-      site_id <- as.character(args[[site_idx + 1]])
-      bbox_vals <- as.numeric(args[(bbox_idx + 1):(bbox_idx + 4)])
-      bbox <- c(left = bbox_vals[1], bottom = bbox_vals[2], right = bbox_vals[3], top = bbox_vals[4])
-      .normalize_stage3_met(site_id = site_id, bbox = bbox)
-    }
+  if (identical(stage, "stage3")) {
+    .normalize_stage3_met(site_id = site_id, bbox = bbox)
   }
 
   invisible(result)

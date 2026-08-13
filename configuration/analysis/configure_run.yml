@@ -3,6 +3,6 @@ start_datetime: 2022-09-28 00:00:00
 end_datetime: .na
 forecast_start_datetime: 2022-10-02 00:00:00
 forecast_horizon: 16
-sim_name: analysis_run
+sim_name: run
 configure_flare: configure_flare.yml
 use_s3: no

@@ -1,0 +1,15 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+flare_tempdir
+forecasts
+plots
+restart
+targets
+binary/.DS_Store
+configuration/.DS_Store
+.DS_Store
+drivers
+R/__pycache__/

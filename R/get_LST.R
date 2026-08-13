@@ -3,7 +3,7 @@
 ################################################################################
 
 ################################################################################
-## the below code is designed to pull landsat thermal imagery over a specified 
+## the below code is designed to pull landsat thermal imagery over a specified
 # area and estimate temperature over the reservoir
 ################################################################################
 # get bboxes
@@ -38,23 +38,23 @@ get_lst <- function(bbox, start_date, end_date, points) {
     )
     # define the cube space
     cube <- cube_view(srs = "EPSG:4326",
-                      extent = list(t0 = start_date, 
+                      extent = list(t0 = start_date,
                                     t1 = end_date,
-                                    left = bbox[1], 
+                                    left = bbox[1],
                                     right = bbox[3],
-                                    top = bbox[4], 
+                                    top = bbox[4],
                                     bottom = bbox[2]),
                       dx = 0.00031, # 30 m resolution
-                      dy = 0.00031, 
+                      dy = 0.00031,
                       dt = "P1D",
-                      aggregation = "median", 
+                      aggregation = "median",
                       resampling = "average")
     # create stac image collection
     col <- stac_image_collection(items$features,
                                  asset_names = c("lwir11", "qa_pixel"),
                                  url_fun = identity)
     # make raster cube
-    data <- raster_cube(image_collection = col, 
+    data <- raster_cube(image_collection = col,
                         view = cube) |>
       apply_pixel(expr = "((qa_pixel & (1<<7)) != 0) * lwir11", names = "thermal") |> # if not water, set to 0
       apply_pixel(expr = "(thermal * 0.00341802) - 124.15", names = "thermal_C") # convert to C
@@ -117,13 +117,13 @@ get_vals <- function(points, thermal_data){
 ################################################################################
 # function to clean up data for input to FLARE
 ################################################################################
-clean_data <- function(values){
+clean_data <- function(values, site_id){
   values <- na.omit(values)
   if(length(values) > 2){
     values <- values[2:3]
   }
   values$time <- paste0(values$time, "T00:00:00Z")
-  values$site_id <- site
+  values$site_id <- site_id
   values$depth <- 0
   values$variable <- 'temperature'
   colnames(values)[1] <- "datetime"

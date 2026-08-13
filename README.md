@@ -15,3 +15,9 @@ To run this code:
 Note: The GLM binary used in this repo (/binary/macos/glm) is for MacOS users only. 
 For Windows or Linux users, please replace this binary with the appropriate GLM file 
 (see https://github.com/AquaticEcoDynamics/glm-aed).
+
+
+## To do list
+
+- Generate initial temperature profile from user supplied information about whether it is stratified, a calculation of thermocline depth from fetch (fetch can be calculated using the bathyometry), and value for the deep water temperature.  These can be combined to create a profile.
+- Get the SWOT depth working

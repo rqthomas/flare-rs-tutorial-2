@@ -5,15 +5,16 @@
 # native Python avoids reticulate/virtualenv version mismatches between
 # machines -- this script is called as a subprocess from R (see R/get_met.R).
 #
-# https://dynamical.org/catalog/noaa-gefs-forecast-35-day/
+# stage 2 (future forecast): https://dynamical.org/catalog/noaa-gefs-forecast-35-day/
+# stage 3 (historical):      https://dynamical.org/catalog/noaa-gefs-analysis/
 ################################################################################
 import argparse
 import os
 
 import certifi
+import dynamical_catalog
 import numpy as np
 import pandas as pd
-import xarray as xr
 
 # variables of interest in the dynamical.org GEFS zarr store
 VARS = [
@@ -240,22 +241,65 @@ def get_stage_2(ds, start_date, end_date, site, bbox, base_dir="drivers/met/gefs
 
 
 ################################################################################
-# stage 3: historical met from start_date to end_date, one parquet file per site_id
+# open the NOAA GEFS analysis dataset (single deterministic best-estimate
+# time series at 3-hour resolution, no ensemble/forecast-cycle dimensions)
+# https://dynamical.org/catalog/noaa-gefs-analysis/
 ################################################################################
-def get_stage_3(ds, start_date, site, bbox, end_date=None, base_dir="drivers/met/gefs-v12/stage3"):
+def open_analysis_dataset():
+    return dynamical_catalog.open("noaa-gefs-analysis", chunks=None)
+
+
+################################################################################
+# stage 3: historical met from start_date to end_date, one parquet file per
+# site_id. Pulls from the GEFS *analysis* dataset instead of stitching
+# together many separate forecast cycles from the 35-day forecast dataset:
+# that let a single day of data (keep_only_day=True) cost as much as a full
+# 35-day forecast cycle, because each day required its own zarr selection
+# against a completely different forecast-cycle init. The analysis dataset
+# has no forecast-cycle dimension, so the whole start_date..end_date window
+# is fetched in a single selection.
+################################################################################
+def get_stage_3(ds, start_date, site, bbox, end_date=None, base_dir="drivers/met/gefs-v12/stage3", n_members=31):
     start = pd.to_datetime(start_date).date()
     if end_date is None:
         end = start + pd.Timedelta(days=5)
     else:
         end = pd.to_datetime(end_date).date()
-    dates = pd.date_range(start, end, freq="1D").date
-    stage3 = []
-    for date in dates:
-        print(f"Downloading stage 3 met data for {date}", flush=True)
-        metdata = get_temp_gefs(ds, site, str(date), bbox, lead_time=0)
-        stage3.append(metdata)
-    stage3 = pd.concat(stage3, ignore_index=True)
-    for site_id, group in stage3.groupby("site_id"):
+
+    lon_min, lat_min, lon_max, lat_max = bbox
+    mean_lat = (lat_min + lat_max) / 2
+    mean_lon = (lon_min + lon_max) / 2
+
+    print(f"Downloading stage 3 (analysis) met data for {start} to {end}", flush=True)
+
+    # method="nearest" can't be combined with a sliced dimension in a single
+    # .sel() call, so pick the point first and then slice time separately
+    point = ds[VARS].sel(latitude=mean_lat, longitude=mean_lon, method="nearest")
+    point = point.sel(time=slice(str(start), str(end)))
+
+    df = point.to_dataframe().reset_index()
+    df = df.drop(columns=["latitude", "longitude", "spatial_ref"], errors="ignore")
+
+    id_vars = [c for c in df.columns if c not in VARS]
+    long_df = df.melt(id_vars=id_vars, value_vars=VARS, var_name="variable", value_name="prediction")
+    long_df["variable"] = long_df["variable"].replace(VAR_RENAME)
+    long_df["datetime"] = pd.to_datetime(long_df["time"], utc=True)
+    long_df["site_id"] = site
+    long_df["family"] = "ensemble"
+    long_df = long_df.drop(columns=["time"])
+
+    # the analysis dataset is a single deterministic series with no ensemble
+    # spread, but FLAREr's met-file builder joins historical met to the
+    # future (stage 2) forecast by matching `parameter` per ensemble member.
+    # Replicate the series across the same parameter ids stage 2 uses so
+    # every ensemble member gets the same (correct) historical weather.
+    members = pd.DataFrame({"parameter": np.arange(n_members, dtype="float64")})
+    long_df = long_df.merge(members, how="cross")[FINAL_COLS]
+
+    hourly_df = get_hourly(long_df, mean_lon, mean_lat)
+    hourly_df = hourly_df[(hourly_df["datetime"].dt.date >= start) & (hourly_df["datetime"].dt.date <= end)]
+
+    for site_id, group in hourly_df.groupby("site_id"):
         out_dir = os.path.join(base_dir, f"site_id={site_id}")
         os.makedirs(out_dir, exist_ok=True)
         group.drop(columns=["site_id"]).to_parquet(os.path.join(out_dir, "part-0.parquet"), index=False)
@@ -263,7 +307,7 @@ def get_stage_3(ds, start_date, site, bbox, end_date=None, base_dir="drivers/met
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download NOAA GEFS met forecasts for FLARE from data.dynamical.org")
+    parser = argparse.ArgumentParser(description="Download NOAA GEFS met forecasts for FLARE from dynamical.org")
     parser.add_argument("stage", choices=["stage2", "stage3"])
     parser.add_argument("--site", required=True, help="site_id")
     parser.add_argument(
@@ -276,19 +320,18 @@ def main():
     # make sure http(s) access works regardless of the machine's default certs
     os.environ["SSL_CERT_FILE"] = certifi.where()
 
-    print("Opening data from data.dynamical.org")
-    ds = xr.open_zarr(
-        "https://data.dynamical.org/noaa/gefs/forecast-35-day/latest.zarr?email=optional@email.com",
-        consolidated=True,
-        decode_timedelta=False,
-        chunks="auto",
-    )
-
     if args.stage == "stage2":
         if not args.end_date:
             parser.error("--end-date is required for stage2")
+        print("Opening the NOAA GEFS 35-day forecast dataset from dynamical.org")
+        # data.dynamical.org hardcoded zarr URLs are deprecated (shut off
+        # dataset-by-dataset through 2026-08-31); go through the catalog
+        # instead, same as stage 3 -- see https://dynamical.org/migration-2026/
+        ds = dynamical_catalog.open("noaa-gefs-forecast-35-day", chunks="auto")
         get_stage_2(ds, args.start_date, args.end_date, args.site, args.bbox)
     else:
+        print("Opening the NOAA GEFS analysis dataset from dynamical.org")
+        ds = open_analysis_dataset()
         get_stage_3(ds, args.start_date, args.site, args.bbox, end_date=args.end_date)
 
 

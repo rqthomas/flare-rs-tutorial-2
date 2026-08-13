@@ -1,75 +1,29 @@
 location:
-  site_id: blank
+  site_id: wacc
   name: blank
-  latitude: 37.307
-  longitude: -79.81607
+  latitude: 34.290116
+  longitude: -78.510283
 da_setup:
   da_method: enkf
-  par_fit_method: perturb
+  par_fit_method: inflate
   ensemble_size: 31
   localization_distance: .na
   no_negative_states: yes
   assimilate_first_step: no
   use_obs_constraint: yes
+  obs_filename: targets-insitu-rs.csv
   use_inflation_factor: no
   inflation_factor: 1.08
   inflation_only_at_da: no
   add_random_noise: 2
 model_settings:
   ncore: 10
-  max_model_layers: 75
+  max_model_layers: 250
   model_name: glm
   base_GLM_nml: glm3.nml
+  base_AED_nml: aed2.nml
   modeled_depths:
-  - 0.0
-  - 0.5
-  - 1.0
-  - 1.5
-  - 2.0
-  - 2.5
-  - 3.0
-  - 3.5
-  - 4.0
-  - 4.5
-  - 5.0
-  - 5.5
-  - 6.0
-  - 6.5
-  - 7.0
-  - 7.5
-  - 8.0
-  - 8.5
-  - 9.0
-  - 9.5
-  - 10.0
-  - 10.5
-  - 11.0
-  - 11.5
-  - 12.0
-  - 12.5
-  - 13.0
-  par_config_file: parameter_calibration_config.csv
-  obs_config_file: observations_config.csv
-  states_config_file: states_config.csv
-default_init:
-  lake_depth: 13
-  temp:
-  - 4.8
-  - 4.8
-  - 4.78
-  - 4.76
-  - 4.73
-  - 4.73
-  - 4.73
-  - 4.73
-  - 4.71
-  - 4.71
-  - 4.7
-  - 4.7
-  - 4.7
-  - 4.7
-  temp_depths:
-  - 0.1
+  - 0
   - 1
   - 2
   - 3
@@ -83,6 +37,134 @@ default_init:
   - 11
   - 12
   - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  - 21
+  - 22
+  - 23
+  - 24
+  - 25
+  - 26
+  - 27
+  - 28
+  - 29
+  - 30
+  - 31
+  - 32
+  - 33
+  - 34
+  - 35
+  - 36
+  - 37
+  - 38
+  - 39
+  - 40
+  - 41
+  - 42
+  - 43
+  - 44
+  par_config_file: parameter_calibration_config.csv
+  obs_config_file: observations_config.csv
+  states_config_file: states_config.csv
+default_init:
+  lake_depth: 45.0
+  temp:
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  - 26.425
+  temp_depths:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  - 21
+  - 22
+  - 23
+  - 24
+  - 25
+  - 26
+  - 27
+  - 28
+  - 29
+  - 30
+  - 31
+  - 32
+  - 33
+  - 34
+  - 35
+  - 36
+  - 37
+  - 38
+  - 39
+  - 40
+  - 41
+  - 42
+  - 43
+  - 44
   salinity: 0.0
   snow_thickness: 0.0
   white_ice_thickness: 0.0
@@ -116,3 +198,4 @@ uncertainty:
   inflow: yes
 output_settings:
   diagnostics_names: extc
+  generate_plot: yes
