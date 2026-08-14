@@ -10,10 +10,12 @@
 # 4. Grab Kw factor
 # 5. Estimate sediment zone info
 # 6. Create GLM and config yml file
-pacman::p_load('rstac', 'terra', 'stars', 'ggplot2', 'tidyterra', 'viridis', 'yaml',
-               'gdalcubes', 'tmap', 'dplyr', 'tidyverse', 'sf',
-               'arrow', 'raster', 'terra', 'elevatr', 'marmap', 'rLakeAnalyzer',
-               'httr', 'jsonlite', 'readr')
+pacman::p_load('rstac', 'terra', 'stars',
+               'ggplot2', 'tidyterra', 'viridis',
+               'yaml','gdalcubes', 'tmap', 'dplyr',
+               'tidyverse', 'sf','arrow', 'raster',
+               'terra', 'elevatr', 'marmap',
+               'rLakeAnalyzer','httr', 'jsonlite', 'readr')
 
 library(ropenmeteo)
 library(GLM3r)
@@ -28,7 +30,7 @@ use_s3 <- FALSE
 
 lake_directory <- here::here()
 # Point FLARE to GLM location
-Sys.setenv('GLM_PATH'=paste0(lake_directory, '/binary/macos/glm'))
+Sys.setenv('GLM_PATH' = paste0(lake_directory, '/binary/macos/glm'))
 options(future.globals.maxSize = 891289600)
 
 # get scripts needed to run this code
