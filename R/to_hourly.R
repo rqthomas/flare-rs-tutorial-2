@@ -6,11 +6,11 @@ get_hourly <- function(df, mean_lon, mean_lat){
   datetime <- seq(min(df$datetime), max(df$datetime), by = "1 hour")
   variables <- unique(df$variable)
   sites <- unique(df$site_id)
-  
+
   parameter_maxtime <- df |>
     dplyr::group_by(site_id, family, parameter) |>
     dplyr::summarise(max_time = max(datetime), .groups = "drop")
-  
+
   full_time <- expand.grid(sites, parameters, datetime, variables) |>
     dplyr::rename(site_id = Var1,
                   parameter = Var2,
@@ -22,7 +22,7 @@ get_hourly <- function(df, mean_lon, mean_lat){
     dplyr::filter(datetime <= max_time) |>
     dplyr::select(-c("max_time")) |>
     dplyr::distinct()
-  
+
   states <- df |>
     dplyr::select(site_id, family, parameter, datetime, variable, prediction) |>
     dplyr::group_by(site_id, parameter, variable) |>
@@ -33,7 +33,7 @@ get_hourly <- function(df, mean_lon, mean_lat){
     dplyr::mutate(prediction =  imputeTS::na_interpolation(prediction, option = "linear")) |>
     dplyr::mutate(prediction = ifelse(variable == "RH", prediction/100, prediction)) |>
     dplyr::ungroup()
-  
+
   fluxes <- df |>
     dplyr::select(site_id, family, parameter, datetime, variable, prediction) |>
     dplyr::group_by(site_id, family, parameter, variable) |>
@@ -41,9 +41,14 @@ get_hourly <- function(df, mean_lon, mean_lat){
     dplyr::filter(variable %in% c("precipitation_flux","surface_downwelling_longwave_flux_in_air","surface_downwelling_shortwave_flux_in_air")) |>
     dplyr::arrange(site_id, family, parameter, datetime) |>
     tidyr::fill(prediction, .direction = "up") |>
-    dplyr::mutate(prediction = ifelse(variable == "precipitation_flux", prediction / (6 * 60 * 60), prediction)) |>
+    # NOTE: dynamical.org's precipitation_surface is already a rate in
+    # kg m-2 s-1 ("average precipitation rate since the previous forecast
+    # step"), not a 6-hour accumulated depth, so no unit conversion is
+    # needed here. (This used to divide by 6*60*60, carried over from a
+    # legacy 6-hourly-accumulated GEFS source; that made the output
+    # ~21,600x too small.)
     dplyr::ungroup()
-  
+
   fluxes <- fluxes |>
     dplyr::mutate(hour = lubridate::hour(datetime),
                   date = lubridate::as_date(datetime),
@@ -56,7 +61,7 @@ get_hourly <- function(df, mean_lon, mean_lat){
     dplyr::ungroup() |>
     dplyr::mutate(prediction = ifelse(variable == "surface_downwelling_shortwave_flux_in_air" & avg.rpot > 0.0, rpot * (avg.SW/avg.rpot),prediction))# |>
   #dplyr::select(any_of(var_order))
-  
+
   hourly_df <- dplyr::bind_rows(states, fluxes) |>
     dplyr::arrange(site_id, family, variable, datetime) |>
     dplyr::select(any_of(var_order))
@@ -89,10 +94,10 @@ equation_of_time <- function(doy) {
 }
 
 downscale_solar_geom <- function(doy, lon, lat) {
-  
+
   dt <- median(diff(doy)) * 86400 # average number of seconds in time interval
   hr <- (doy - floor(doy)) * 24 # hour of day for each element of doy
-  
+
   ## calculate potential radiation
   cosz <- cos_solar_zenith_angle(doy, lat, lon, dt, hr)
   rpot <- 1366 * cosz
